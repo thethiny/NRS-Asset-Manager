@@ -1,0 +1,1 @@
+import mk_utils.nrs.mk11.class_handlers as mk11_class_handlers  # Required to load the init

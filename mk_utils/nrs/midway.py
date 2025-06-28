@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal, Sequence, Type, Union
 
 from mk_utils.nrs.ue3_common import ClassHandler, MK11Archive, MK11AssetExternalTable, MK11ExportTableEntry, MK11ImportTableEntry, MK11TableEntry, MK11TableMeta
-from mk_utils.nrs.games.mk11.enums import CompressionType
+from mk_utils.nrs.mk11.enums import CompressionType
 from mk_utils.utils.structs import T, Struct
 from mk_utils.utils.filereader import FileReader
 

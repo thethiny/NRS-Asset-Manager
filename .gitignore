@@ -3,6 +3,8 @@ extracted
 __pycache__
 *.pyc
 *.dll
+.pytest_cache
+IJ1Files
 
 # Temporary Scripts
 out.py
