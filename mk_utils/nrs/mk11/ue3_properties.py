@@ -2,7 +2,7 @@ import logging
 from ctypes import c_char, c_float, c_ubyte, c_uint32, c_uint64
 from typing import Dict, Tuple, Type
 
-from mk_utils.nrs.ue3_common import GUID
+from mk_utils.nrs.mk11.ue3_common import GUID
 from mk_utils.nrs.mk11.enums import enumMaps
 from mk_utils.utils.structs import Struct
 

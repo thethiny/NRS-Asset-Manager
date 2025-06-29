@@ -2,7 +2,7 @@ import logging
 from typing import List, Tuple, Union
 
 from mk_utils.nrs.mk11.archive import MK11UE3Asset
-from mk_utils.nrs.ue3_common import get_handlers
+from mk_utils.nrs.mk11.ue3_common import get_handlers
 
 ClassHandlers = get_handlers()
 

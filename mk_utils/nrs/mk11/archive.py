@@ -4,9 +4,9 @@ import logging
 import os
 from typing import Any, Type
 
-from mk_utils.nrs.ue3_common import MK11AssetHeader, MK11Archive
+from mk_utils.nrs.mk11.ue3_common import MK11AssetHeader, MK11Archive
 from mk_utils.nrs.mk11.enums import CompressionType
-from mk_utils.nrs.midway import MidwayAsset
+from mk_utils.nrs.mk11.midway import MidwayAsset
 from mk_utils.utils.structs import T, Struct
 
 class MK11AssetSubPackage(Struct):

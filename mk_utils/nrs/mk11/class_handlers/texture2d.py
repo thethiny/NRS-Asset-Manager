@@ -5,7 +5,7 @@ import logging
 import os
 from mk_utils.nrs.mk11.class_handlers.bc7 import make_dds_data, make_png_data
 from mk_utils.nrs.mk11.ue3_properties import UProperty
-from mk_utils.nrs.ue3_common import ClassHandler, MK11ExportTableEntry
+from mk_utils.nrs.mk11.ue3_common import ClassHandler, MK11ExportTableEntry
 from mk_utils.utils.structs import Struct
 
 class TextureAddress(IntEnum):

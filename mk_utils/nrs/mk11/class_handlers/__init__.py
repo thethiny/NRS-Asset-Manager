@@ -2,7 +2,7 @@ import logging
 
 from mk_utils.nrs.mk11.class_handlers.database import DatabaseHandler as MK11DatabaseHandler # Required to be in locals()
 from mk_utils.nrs.mk11.class_handlers.texture2d import Texture2DHandler
-from mk_utils.nrs.ue3_common import ClassHandler
+from mk_utils.nrs.mk11.ue3_common import ClassHandler
 
 
 logging.getLogger("ClassHandlers").debug(f"Registering handlers")
