@@ -2,11 +2,11 @@ import logging
 from typing import List, Tuple, Union
 
 from mk_utils.nrs.mk11.archive import MK11UE3Asset
-from mk_utils.nrs.mk11.ue3_common import get_handlers
+from mk_utils.nrs.ue3_common import get_handlers
 
 ClassHandlers = get_handlers()
 
-def extract_all(files: Union[List[str], List[Tuple[str, str]]], output_dir: str = "extracted", overwrite = False):
+def extract_all(files: List[Union[Tuple[str, str], str]], output_dir: str = "extracted", overwrite = False):
     saved = []
     for info in files:
         file, psf_source = info if not isinstance(info, str) else (info, "")
