@@ -1,7 +1,7 @@
 """
 IJ2-specific UE3 common structures.
 
-Field names and layout verified against IJ2 PDB (IDA decompilation).
+Field names and layout verified.
 
 Key differences from MK11:
 - Header is 100 bytes (vs 104): ShaderVersion/BranchVersion after GUID, no extra before FourCC
@@ -60,7 +60,7 @@ class IJ2TableMeta(Struct):
 class IJ2AssetHeader(Struct):
     """IJ2 file header - 100 bytes (0x64).
 
-    Serialization order from PDB FPackageFileSummary::operator<< for FileVersion=0x2DC:
+    Serialization order:
     Tag, FileVersion, TotalHeaderSize, MidwayTeamFourCC, MidwayTeamVersion,
     ShaderVersion (>=0x29C), BranchVersion (>=0x2C2), PackageFlags,
     NameCount+NameOffset, ExportCount+ExportOffset, ImportCount+ImportOffset,
@@ -92,7 +92,7 @@ class IJ2AssetHeader(Struct):
 class IJ2CompressedChunk(Struct):
     """FCompressedChunk - 24 bytes.
 
-    PDB serialization: UncompressedOffset(8), UncompressedSize(4),
+    Serialization: UncompressedOffset(8), UncompressedSize(4),
     CompressedOffset(8), CompressedSize(4).
     """
     __slots__ = ()
@@ -218,7 +218,7 @@ class IJ2NoneTableEntry(IJ2TableEntry):
 class IJ2ExportTableEntry(IJ2TableEntry, UETableEntryBase):
     """FObjectExport - 72+ bytes (variable due to ComponentMap).
 
-    PDB serialization order:
+    Serialization order:
     ClassIndex(4), SuperIndex(4), OuterIndex(4), ObjectName(FName=4+4),
     ArchetypeIndex(4), ReferencedObjects(4), ObjectFlags(8), ObjectGuid(16),
     SerialSize(4), SerialOffset(8), ComponentMap(TMap, variable), ExportFlags(4)
@@ -325,7 +325,7 @@ class IJ2ExportTableEntry(IJ2TableEntry, UETableEntryBase):
 class IJ2ImportTableEntry(IJ2TableEntry, UETableEntryBase):
     """FObjectImport - 28 bytes.
 
-    PDB serialization order:
+    Serialization order:
     ClassPackage(FName=4+4), ClassName(FName=4+4), OuterIndex(4), ObjectName(FName=4+4)
     """
     _fields_ = [

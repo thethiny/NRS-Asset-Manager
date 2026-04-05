@@ -1,10 +1,21 @@
-Databases
-extracted
 __pycache__
 *.pyc
 *.dll
 .pytest_cache
-IJ1Files
+.env
+
+Databases
+extracted
+extracted_test
+gamedata
+Documentation
+settings.json
+claude*
+.claude
+temp
+depotest
+tests/**/*inventory*.py
+wiki/
 
 # Temporary Scripts
 out.py
