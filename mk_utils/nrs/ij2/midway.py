@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 
-from mk_utils.nrs.ij2.enums import IJ2CompressionType
+from mk_utils.nrs.ij2.enums import ECompressionFlags, EPackageFlags
 from mk_utils.nrs.ij2.ue3_common import (
     IJ2Archive, IJ2AssetHeader, IJ2ExportTableEntry, IJ2ImportTableEntry, IJ2TableMeta,
 )
@@ -104,7 +104,7 @@ class IJ2MidwayAsset(IJ2Archive):
 
     def parse_summary(self):
         self.header = IJ2AssetHeader.read(self.mm)
-        self.compression_mode = IJ2CompressionType(self.header.compression_flag)
+        self.compression_mode = ECompressionFlags(self.header.compression_flag)
 
         # IJ2 midway format: only one packages count (no extra)
         self.packages_count = Struct.read_buffer(self.mm, c_uint32)
@@ -260,10 +260,16 @@ class IJ2MidwayAsset(IJ2Archive):
         saved_file = handler_obj.save(parsed, export, self.file_name, save_dir, self)
         return saved_file
 
+    @staticmethod
+    def _decode_package_flags(flags: int) -> str:
+        names = [f.name for f in EPackageFlags if flags & f.value]
+        return " | ".join(names) if names else "None"
+
     def __str__(self):
         strings = [
             f"IJ2 Midway Asset File: {self.file_name}",
-            f"Compression Mode: {self.header.compression_flag}",
+            f"Compression Mode: {ECompressionFlags(self.header.compression_flag).name}",
+            f"Package Flags: {self._decode_package_flags(self.header.package_flags)}",
             f"{self.packages_count} Packages | {self.packages_extra_count} Extra Packages",
             f"{len(self.name_table)} Names",
             f"{len(self.import_table)} Imports",

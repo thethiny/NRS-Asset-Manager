@@ -159,6 +159,12 @@ class ObjectProperty(UProperty):
         return value
 
 
+class WeakUObjectHandleProperty(UProperty):
+    @classmethod
+    def read_data(cls, file_handle, read_size, *args, **kwargs):
+        return str(Struct.read_buffer(file_handle, GUID))
+
+
 class ByteProperty(UProperty):
     @classmethod
     def read_data(cls, file_handle, read_size, *args, **kwargs):
@@ -188,6 +194,7 @@ class MapProperty(UProperty):
     STRUCT_KEY_MAPS = {
         "mCAPInfoTable",
         "mHellboyHeadIndexTable",
+        "MD5HashToItemMap",
     }
 
     @classmethod
@@ -305,6 +312,16 @@ class FVector2D(StructProperty):
         return {"X": x, "Y": y}
 
 
+class FLinearColor(StructProperty):
+    @classmethod
+    def read_data(cls, file_handle, *args, **kwargs):
+        r = Struct.read_buffer(file_handle, c_float)
+        g = Struct.read_buffer(file_handle, c_float)
+        b = Struct.read_buffer(file_handle, c_float)
+        a = Struct.read_buffer(file_handle, c_float)
+        return {"R": r, "G": g, "B": b, "A": a}
+
+
 class ArrayProperty(UProperty):
     # Arrays of simple string values (TArray<FString>)
     STRING_ARRAY_KEYS = {
@@ -315,10 +332,13 @@ class ArrayProperty(UProperty):
         "TextureNames",
     }
     # Arrays of name values (TArray<FName>)
-    NAME_ARRAY_KEYS: set = set()
+    NAME_ARRAY_KEYS = {
+        "BaseLayerNames",
+    }
     # Arrays of int/object ref values (TArray<int> / TArray<ObjectRef>)
     INT_ARRAY_KEYS = {
         "WorstCaseItems",
+        "Meshes",
     }
 
     @classmethod
@@ -370,7 +390,12 @@ PropertyMap: Dict[str, Type[UProperty]] = {
     "MapProperty": MapProperty,
     "NameProperty": NameProperty,
     "ObjectProperty": ObjectProperty,
+    "WeakUObjectHandleProperty": WeakUObjectHandleProperty,
     "ByteProperty": ByteProperty,
 }
 
-StructPropertyMap: Dict[str, Type[StructProperty]] = {"FGuid": FGuid, "FVector2D": FVector2D}
+StructPropertyMap: Dict[str, Type[StructProperty]] = {
+    "FGuid": FGuid,
+    "FVector2D": FVector2D,
+    "FLinearColor": FLinearColor,
+}

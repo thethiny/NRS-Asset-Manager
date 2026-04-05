@@ -16,7 +16,7 @@ import os
 from ctypes import c_uint32, c_uint64
 from typing import List, Optional
 
-from mk_utils.nrs.ij2.enums import EPixelFormat, IJ2CompressionType
+from mk_utils.nrs.ij2.enums import EPixelFormat, ECompressionFlags
 from mk_utils.nrs.ij2.ue3_common import IJ2Archive
 from mk_utils.nrs.ij2.ue3_properties import UProperty
 from mk_utils.nrs.mk11.class_handlers.bc7 import (
@@ -181,7 +181,7 @@ class IJ2Texture2DHandler(ClassHandler):
 
         tfc_name = metadata.get("TextureFileCacheName", "")
         tfc_reader = None
-        compression_flag = IJ2CompressionType.OODLE  # TFC data is always Oodle-compressed
+        compression_flag = ECompressionFlags.OODLE  # TFC data is always Oodle-compressed
 
         if tfc_name and any(m["in_tfc"] for m in mips):
             tfc_reader = getattr(instance, "tfc_reader", None)
@@ -238,6 +238,7 @@ class IJ2Texture2DHandler(ClassHandler):
             EPixelFormat.PF_BC7: 98,    # DXGI_FORMAT_BC7_UNORM
             EPixelFormat.PF_G8: 61,     # DXGI_FORMAT_R8_UNORM
             EPixelFormat.PF_A8R8G8B8: 28,  # DXGI_FORMAT_R8G8B8A8_UNORM
+            EPixelFormat.PF_V8U8: 118,  # DXGI_FORMAT_R8G8_SNORM
         }
 
         dxgi_format = dxgi_map.get(pixel_format)

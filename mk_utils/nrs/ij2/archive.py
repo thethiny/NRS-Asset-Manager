@@ -19,7 +19,7 @@ from mk_utils.nrs.ij2.ue3_common import (
     IJ2Archive, IJ2AssetHeader, IJ2CompressedChunk,
 )
 from mk_utils.nrs.ij2.midway import IJ2MidwayAsset
-from mk_utils.nrs.ij2.enums import IJ2CompressionType
+from mk_utils.nrs.ij2.enums import ECompressionFlags
 from mk_utils.utils.structs import Struct
 
 
@@ -35,7 +35,7 @@ class IJ2UE3Asset(IJ2Archive):
 
     def parse(self, skip_bulk: bool = False):
         self.header = self.parse_header()
-        self.compression_mode = IJ2CompressionType(self.header.compression_flag)
+        self.compression_mode = ECompressionFlags(self.header.compression_flag)
         self.compressor = self.get_compressor(self.compression_mode)
 
         # IJ2 has a flat package array (no named packages)

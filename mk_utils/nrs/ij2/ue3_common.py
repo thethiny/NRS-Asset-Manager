@@ -19,7 +19,7 @@ from typing import Any, Union
 
 from mk_utils.nrs.compression.base import CompressionBase
 from mk_utils.nrs.compression.oodle import OodleV4
-from mk_utils.nrs.ij2.enums import IJ2CompressionType
+from mk_utils.nrs.ij2.enums import ECompressionFlags
 from mk_utils.nrs.ue3_common import GUID, UETableEntryBase
 from mk_utils.utils.filereader import FileReader
 from mk_utils.utils.structs import Struct, hex_s
@@ -135,7 +135,7 @@ class IJ2Archive(FileReader):
         return decompressed_data
 
     @classmethod
-    def decompress_block(cls, block: IJ2BlockHeader, compression: Union[int, IJ2CompressionType, CompressionBase], mm):
+    def decompress_block(cls, block: IJ2BlockHeader, compression: Union[int, ECompressionFlags, CompressionBase], mm):
         data = b""
         if isinstance(compression, CompressionBase):
             compressor = compression
@@ -149,10 +149,10 @@ class IJ2Archive(FileReader):
         return data
 
     @classmethod
-    def get_compressor(cls, compression: Union[int, IJ2CompressionType]):
+    def get_compressor(cls, compression: Union[int, ECompressionFlags]):
         if isinstance(compression, int):
-            compression = IJ2CompressionType(compression)
-        if compression >= IJ2CompressionType.OODLE:
+            compression = ECompressionFlags(compression)
+        if compression >= ECompressionFlags.OODLE:
             return OodleV4()
         else:
             raise NotImplementedError(f"Only Oodle Compression is supported")
@@ -364,8 +364,8 @@ class IJ2ImportTableEntry(IJ2TableEntry, UETableEntryBase):
         string = ""
         string += self.path
         string += self.name
-        if self.outer_class:
-            string += f" : {self.outer_class.name}"
+        if self.class_name_resolved:
+            string += f" : {self.class_name_resolved}"
         return string
 
     def __repr__(self) -> str:
@@ -377,12 +377,10 @@ class IJ2ImportTableEntry(IJ2TableEntry, UETableEntryBase):
         )
 
     def resolve(self, name_table: list, import_table: list, export_table: list):
-        self.class_package = name_table[self.class_package_name]
-        self.outer_class_name = name_table[self.class_name]
+        self.class_package_resolved = name_table[self.class_package_name]
+        self.class_name_resolved = name_table[self.class_name]
         self.name = name_table[self.object_name]
         self.suffix = self.object_name_suffix
         self.package = self.resolve_object(self.outer_index, import_table, export_table)
-        # Set outer_class as a string for display purposes
-        self.outer_class = type('NameHolder', (), {'name': self.outer_class_name})()
 
         self.resolved = True

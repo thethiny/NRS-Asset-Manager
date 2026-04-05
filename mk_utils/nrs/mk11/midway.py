@@ -231,7 +231,9 @@ class MidwayAsset(MK11Archive):
 
         # 4. early-finish
         if prev_end < end:
-            if not skip_bulk and self.bulk_tables:
+            if skip_bulk:
+                pass  # Gap is expected when bulk data was skipped
+            elif self.bulk_tables:
                 first_bulk = self.bulk_tables[0].entries[0].decompressed_offset
                 if first_bulk != prev_end:
                     errors.append(
