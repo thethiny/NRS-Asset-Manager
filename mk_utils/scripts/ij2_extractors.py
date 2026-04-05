@@ -7,13 +7,13 @@ Supports:
 
 Usage:
     from mk_utils.scripts.ij2_extractors import extract_all, extract_coalesced
-    extract_all(["path/to/file.xxx"], output_dir="extracted", oodle_dll="path/to/oo2core_4_win64.dll")
+    extract_all(["path/to/file.xxx"], output_dir="extracted")
     extract_coalesced("path/to/Coalesced.ENG", output_dir="extracted")
 """
 
 import logging
 import os
-from typing import List
+from typing import Sequence, Tuple, Union
 
 from mk_utils.nrs.ij2.archive import IJ2UE3Asset
 from mk_utils.nrs.ij2.class_handlers import ij2_handlers
@@ -21,13 +21,26 @@ from mk_utils.nrs.localization_parser import LocalizationParser
 
 
 def extract_all(
-    files: List[str],
+    files: Sequence[Union[str, Tuple[str, str]]],
     output_dir: str = "extracted",
-    oodle_dll: str = "./oo2core_4_win64.dll",
     overwrite: bool = False,
 ):
+    """Extract IJ2 asset files.
+
+    Args:
+        files: List of file paths or (xxx_path, tfc_path) tuples.
+               For .xxx files without a TFC tuple, auto-discovers .tfc in same directory.
+        output_dir: Output directory for extracted files.
+        overwrite: Whether to overwrite existing files.
+    """
     saved = []
-    for file_path in files:
+    for file_info in files:
+        if isinstance(file_info, tuple):
+            file_path, tfc_source = file_info
+        else:
+            file_path = file_info
+            tfc_source = ""
+
         ext = os.path.splitext(file_path)[1].lower()
 
         if ext in (".eng", ".ini"):
@@ -38,9 +51,16 @@ def extract_all(
             logging.getLogger("IJ2").warning(f"Skipping unknown file type: {file_path}")
             continue
 
+        # Auto-discover TFC file if not explicitly provided
+        if not tfc_source:
+            tfc_candidate = os.path.splitext(file_path)[0] + ".tfc"
+            if os.path.isfile(tfc_candidate):
+                tfc_source = tfc_candidate
+                logging.getLogger("IJ2").info(f"Auto-discovered TFC: {tfc_source}")
+
         logging.getLogger("IJ2").info(f"Parsing {file_path}")
 
-        ij2_asset = IJ2UE3Asset(file_path, oodle_dll=oodle_dll)
+        ij2_asset = IJ2UE3Asset(file_path, tfc_source)
         midway_file = ij2_asset.parse_all(save_path=output_dir)
 
         for export in midway_file.export_table:
@@ -82,16 +102,15 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
 
     if len(sys.argv) < 2:
-        print("Usage: python -m mk_utils.scripts.ij2_extractors <file> [output_dir] [oodle_dll]")
+        print("Usage: python -m mk_utils.scripts.ij2_extractors <file> [output_dir]")
         print("")
         print("Supports: .xxx asset packages, Coalesced.ENG, Coalesced.ini")
         sys.exit(1)
 
     files = [sys.argv[1]]
     output_dir = sys.argv[2] if len(sys.argv) > 2 else "extracted"
-    oodle_dll = sys.argv[3] if len(sys.argv) > 3 else "./oo2core_4_win64.dll"
 
-    result = extract_all(files, output_dir, oodle_dll)
+    result = extract_all(files, output_dir)
     print(f"\nExtracted {len(result)} files")
     for f in result:
         print(f"  {f}")

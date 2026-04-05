@@ -297,6 +297,14 @@ class FGuid(StructProperty):
         return str(Struct.read_buffer(file_handle, GUID))
 
 
+class FVector2D(StructProperty):
+    @classmethod
+    def read_data(cls, file_handle, *args, **kwargs):
+        x = Struct.read_buffer(file_handle, c_float)
+        y = Struct.read_buffer(file_handle, c_float)
+        return {"X": x, "Y": y}
+
+
 class ArrayProperty(UProperty):
     # Arrays of simple string values (TArray<FString>)
     STRING_ARRAY_KEYS = {
@@ -304,6 +312,7 @@ class ArrayProperty(UProperty):
         "mCompletionUnlock",
         "mCompletionUnlockAfterComplete",
         "mItemHashes",
+        "TextureNames",
     }
     # Arrays of name values (TArray<FName>)
     NAME_ARRAY_KEYS: set = set()
@@ -339,7 +348,7 @@ class ArrayProperty(UProperty):
                 )
                 warned_classes.add(key_name)
             subtype = StructProperty
-            sub_args = (name_table, False)  # headers=False, no size hint (variable-size elements)
+            sub_args = (name_table, False)  # headers=False
 
         for i in range(elements_count):
             value = subtype.read_data(file_handle, *sub_args)
@@ -364,4 +373,4 @@ PropertyMap: Dict[str, Type[UProperty]] = {
     "ByteProperty": ByteProperty,
 }
 
-StructPropertyMap: Dict[str, Type[StructProperty]] = {"FGuid": FGuid}
+StructPropertyMap: Dict[str, Type[StructProperty]] = {"FGuid": FGuid, "FVector2D": FVector2D}

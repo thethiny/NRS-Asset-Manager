@@ -1,19 +1,25 @@
 """
 IJ2-specific UE3 common structures.
 
-Key differences from MK11:
-- Header is 100 bytes (vs 104): no shader/engine ver before four_cc, bulk_offset is u32
-- Import entries are 28 bytes (vs 20): class_package as u64, extra field
-- Export entries are 72 bytes (vs 76): name/suffix swapped, no unk_3
-- Package entries are flat 24-byte arrays (no named sub-packages)
-"""
+Field names and layout verified against IJ2 PDB (IDA decompilation).
 
-import logging
+Key differences from MK11:
+- Header is 100 bytes (vs 104): ShaderVersion/BranchVersion after GUID, no extra before FourCC
+- FObjectExport: ClassIndex, SuperIndex, OuterIndex, ObjectName(FName), ArchetypeIndex,
+  ReferencedObjects, ObjectFlags, ObjectGuid, SerialSize, SerialOffset, ComponentMap, ExportFlags
+  (variable size due to ComponentMap; typically 72 bytes when ComponentMap is empty)
+- FObjectImport: ClassPackage(FName), ClassName(FName), OuterIndex(i32), ObjectName(FName)
+  = 28 bytes (three FNames + one i32)
+- FCompressedChunk: UncompressedOffset(u64), UncompressedSize(u32), CompressedOffset(u64),
+  CompressedSize(u32) = 24 bytes
+"""
 
 from ctypes import c_byte, c_char, c_int32, c_uint32, c_uint16, c_uint64
 from typing import Any, Union
 
 from mk_utils.nrs.compression.base import CompressionBase
+from mk_utils.nrs.compression.oodle import OodleV4
+from mk_utils.nrs.ij2.enums import IJ2CompressionType
 from mk_utils.nrs.ue3_common import GUID, UETableEntryBase
 from mk_utils.utils.filereader import FileReader
 from mk_utils.utils.structs import Struct, hex_s
@@ -49,51 +55,51 @@ class IJ2TableMeta(Struct):
     ]
 
 
-# ── Asset Header ─────────────────────────────────────────────────────────────
+# ── Asset Header (FPackageFileSummary) ───────────────────────────────────────
 
 class IJ2AssetHeader(Struct):
     """IJ2 file header - 100 bytes (0x64).
 
-    Compared to MK11:
-    - No shader_version/engine_version before four_cc
-    - bulk_data_offset is u32 instead of u64
-    - shader_version/engine_version appear after GUID
+    Serialization order from PDB FPackageFileSummary::operator<< for FileVersion=0x2DC:
+    Tag, FileVersion, TotalHeaderSize, MidwayTeamFourCC, MidwayTeamVersion,
+    ShaderVersion (>=0x29C), BranchVersion (>=0x2C2), PackageFlags,
+    NameCount+NameOffset, ExportCount+ExportOffset, ImportCount+ImportOffset,
+    GameThreadExportCount, Guid, EngineVersion, CookedContentVersion, CompressionFlags
     """
     _fields_ = [
-        ("magic", c_uint32),                      # 0x00
-        ("file_version", c_uint16),                # 0x04
-        ("licensee_version", c_uint16),            # 0x06
-        ("exports_location", c_uint32),            # 0x08
-        ("midway_team_four_cc", c_char * 4),       # 0x0C = "DCF2"
-        ("midway_team_engine_version", c_uint32),  # 0x10 = 80
-        ("cook_version", c_uint32),                # 0x14 = 570
-        ("main_package", c_char * 4),              # 0x18 = "DDEV"
-        ("package_flags", c_uint32),               # 0x1C
-        ("name_table", IJ2TableMeta),              # 0x20
-        ("export_table", IJ2TableMeta),            # 0x2C
-        ("import_table", IJ2TableMeta),            # 0x38
-        ("bulk_data_offset", c_uint32),            # 0x44 (u32, not u64!)
-        ("guid", GUID),                           # 0x48
-        ("shader_version", c_uint32),              # 0x58
-        ("engine_version", c_uint32),              # 0x5C
-        ("compression_flag", c_uint32),            # 0x60
+        ("magic", c_uint32),                      # 0x00 Tag
+        ("file_version", c_uint16),                # 0x04 FileVersion (lo)
+        ("licensee_version", c_uint16),            # 0x06 FileVersion (hi)
+        ("total_header_size", c_uint32),            # 0x08 TotalHeaderSize (exports_location)
+        ("midway_team_four_cc", c_char * 4),       # 0x0C MidwayTeamFourCC = "DCF2"
+        ("midway_team_version", c_uint32),         # 0x10 MidwayTeamVersion
+        ("shader_version", c_uint32),              # 0x14 ShaderVersion
+        ("branch_version", c_char * 4),            # 0x18 BranchVersion = "DDEV" (package type FourCC)
+        ("package_flags", c_uint32),               # 0x1C PackageFlags
+        ("name_table", IJ2TableMeta),              # 0x24 NameCount + NameOffset
+        ("export_table", IJ2TableMeta),            # 0x30 ExportCount + ExportOffset
+        ("import_table", IJ2TableMeta),            # 0x3C ImportCount + ImportOffset
+        ("game_thread_export_count", c_uint32),    # 0x48 GameThreadExportCount
+        ("guid", GUID),                           # 0x4C Guid
+        ("engine_version", c_uint32),              # 0x5C EngineVersion
+        ("cooked_content_version", c_uint32),      # 0x60 CookedContentVersion (only on load)
+        ("compression_flag", c_uint32),            # 0x64 CompressionFlags
     ]
 
 
-# ── Package Entry ────────────────────────────────────────────────────────────
+# ── FCompressedChunk ─────────────────────────────────────────────────────────
 
-class IJ2PackageEntry(Struct):
-    """IJ2 package entry - 24 bytes (flat, no names).
+class IJ2CompressedChunk(Struct):
+    """FCompressedChunk - 24 bytes.
 
-    MK11 uses named packages (HeaderData, Package, Other) with sub-entries.
-    IJ2 uses a flat array of entries.
+    PDB serialization: UncompressedOffset(8), UncompressedSize(4),
+    CompressedOffset(8), CompressedSize(4).
     """
     __slots__ = ()
     _fields_ = [
-        ("decompressed_offset", c_uint64),  # 0x00
-        ("decompressed_size", c_uint32),    # 0x08
-        ("compressed_offset", c_uint32),    # 0x0C
-        ("unknown", c_uint32),              # 0x10 (always 0)
+        ("uncompressed_offset", c_uint64),  # 0x00
+        ("uncompressed_size", c_uint32),    # 0x08
+        ("compressed_offset", c_uint64),    # 0x0C
         ("compressed_size", c_uint32),      # 0x14
     ]
 
@@ -129,18 +135,27 @@ class IJ2Archive(FileReader):
         return decompressed_data
 
     @classmethod
-    def decompress_block(cls, block: IJ2BlockHeader, compression: Union[int, CompressionBase], mm):
+    def decompress_block(cls, block: IJ2BlockHeader, compression: Union[int, IJ2CompressionType, CompressionBase], mm):
         data = b""
         if isinstance(compression, CompressionBase):
             compressor = compression
         else:
-            raise NotImplementedError(f"IJ2 requires a CompressionBase instance, got {type(compression)}")
+            compressor = cls.get_compressor(compression)
         for chunk_header, chunk_data in cls.parse_blocks_chunk(block, mm):
             decompressed_chunk = compressor.decompress(
                 chunk_data, chunk_header.decompressed_size
             )
             data += decompressed_chunk
         return data
+
+    @classmethod
+    def get_compressor(cls, compression: Union[int, IJ2CompressionType]):
+        if isinstance(compression, int):
+            compression = IJ2CompressionType(compression)
+        if compression >= IJ2CompressionType.OODLE:
+            return OodleV4()
+        else:
+            raise NotImplementedError(f"Only Oodle Compression is supported")
 
     @classmethod
     def parse_blocks_chunk(cls, block: IJ2BlockHeader, mm):
@@ -198,28 +213,41 @@ class IJ2NoneTableEntry(IJ2TableEntry):
         self.resolved = True
 
 
-# ── Export Table Entry ───────────────────────────────────────────────────────
+# ── Export Table Entry (FObjectExport) ───────────────────────────────────────
 
 class IJ2ExportTableEntry(IJ2TableEntry, UETableEntryBase):
-    """IJ2 export table entry - 72 bytes.
+    """FObjectExport - 72+ bytes (variable due to ComponentMap).
 
-    Key difference from MK11: name and suffix are SWAPPED,
-    and unk_3 field is absent (72 vs 76 bytes).
+    PDB serialization order:
+    ClassIndex(4), SuperIndex(4), OuterIndex(4), ObjectName(FName=4+4),
+    ArchetypeIndex(4), ReferencedObjects(4), ObjectFlags(8), ObjectGuid(16),
+    SerialSize(4), SerialOffset(8), ComponentMap(TMap, variable), ExportFlags(4)
+
+    When ComponentMap is empty (count=0), total = 4+4+4+8+4+4+8+16+4+8+4+4 = 72 bytes.
     """
     _fields_ = [
-        ("object_class", c_int32),
-        ("object_outer_class", c_int32),
-        ("object_name_suffix", c_uint32),   # Swapped with name vs MK11!
-        ("object_name", c_int32),           # Swapped with suffix vs MK11!
-        ("object_super", c_int32),
-        ("object_flags", c_uint64),
-        ("object_main_package", c_uint32),
-        ("unk_1", c_uint32),
-        ("object_guid", GUID),
-        ("object_size", c_uint32),
-        ("object_offset", c_uint64),
-        ("unk_2", c_uint64),
+        ("class_index", c_int32),          # ClassIndex: resolve_object
+        ("super_index", c_int32),          # SuperIndex: resolve_object
+        ("outer_index", c_int32),          # OuterIndex: resolve_object
+        ("object_name", c_uint32),         # ObjectName.Index (FName part 1)
+        ("object_name_suffix", c_uint32),  # ObjectName.Number (FName part 2)
+        ("archetype_index", c_int32),      # ArchetypeIndex: resolve_object
+        ("referenced_objects", c_int32),   # ReferencedObjects count
+        ("object_flags", c_uint64),        # ObjectFlags
+        ("object_guid", GUID),             # ObjectGuid (16 bytes)
+        ("serial_size", c_uint32),         # SerialSize (object data size)
+        ("serial_offset", c_uint64),       # SerialOffset (object data offset)
+        ("component_map_count", c_uint32), # ComponentMap entry count (TMap serialization)
+        ("export_flags", c_uint32),        # ExportFlags
     ]
+
+    @property
+    def object_size(self):
+        return self.serial_size
+
+    @property
+    def object_offset(self):
+        return self.serial_offset
 
     @property
     def file_name(self):
@@ -258,7 +286,7 @@ class IJ2ExportTableEntry(IJ2TableEntry, UETableEntryBase):
         string = ""
         if self.package:
             string += f"[{self.package}] "
-        string += f"{self.object_offset:0>8X} ({self.object_size:0>8X}) "
+        string += f"{self.serial_offset:0>8X} ({self.serial_size:0>8X}) "
         string += self.path
         string += self.file_name
         if self.class_super:
@@ -267,51 +295,47 @@ class IJ2ExportTableEntry(IJ2TableEntry, UETableEntryBase):
 
     def __repr__(self) -> str:
         return (
-            f"offset={hex_s(self.object_offset)} "
-            f"size=({hex_s(self.object_size)}) "
-            f"package={hex_s(self.object_main_package)} "
-            f"folder={hex_s(self.object_outer_class)} "
-            f"class={hex_s(self.object_class)} "
-            f"super={hex_s(self.object_super)} "
+            f"offset={hex_s(self.serial_offset)} "
+            f"size=({hex_s(self.serial_size)}) "
+            f"outer={hex_s(self.outer_index)} "
+            f"class={hex_s(self.class_index)} "
+            f"super={hex_s(self.super_index)} "
+            f"archetype={hex_s(self.archetype_index)} "
             f"name={hex_s(self.object_name)}: {self.name}"
         )
 
     def resolve(self, name_table: list, import_table: list, export_table: list):
-        object_class = self.resolve_object(self.object_class, import_table, export_table)
-        object_outer_class = self.resolve_object(self.object_outer_class, import_table, export_table)
+        object_class = self.resolve_object(self.class_index, import_table, export_table)
+        object_super = self.resolve_object(self.super_index, import_table, export_table)
+        object_outer = self.resolve_object(self.outer_index, import_table, export_table)
         name = name_table[self.object_name]
-        object_super = self.resolve_object(self.object_super, import_table, export_table)
-        # IJ2 may not use object_main_package as a name index the same way as MK11
-        try:
-            package = name_table[self.object_main_package]
-        except (IndexError, KeyError):
-            package = ""
 
         self.class_ = object_class
-        self.class_outer = object_outer_class
+        self.class_super = object_super
+        self.class_outer = object_outer
         self.name = name
         self.suffix = self.object_name_suffix
-        self.class_super = object_super
-        self.package = package
+        self.package = ""  # IJ2 doesn't use a separate package name index
 
         self.resolved = True
 
 
-# ── Import Table Entry ───────────────────────────────────────────────────────
+# ── Import Table Entry (FObjectImport) ───────────────────────────────────────
 
 class IJ2ImportTableEntry(IJ2TableEntry, UETableEntryBase):
-    """IJ2 import table entry - 28 bytes.
+    """FObjectImport - 28 bytes.
 
-    Different from MK11's 20-byte entries.
-    Uses u64 for class_package (name index).
+    PDB serialization order:
+    ClassPackage(FName=4+4), ClassName(FName=4+4), OuterIndex(4), ObjectName(FName=4+4)
     """
     _fields_ = [
-        ("import_class_package", c_uint64),   # Name index (not resolve_object)
-        ("import_outer_class", c_int32),      # Name index for the class type
-        ("import_name_suffix", c_int32),
-        ("import_class_reference", c_int32),  # resolve_object -> parent import
-        ("import_name", c_int32),             # Name index
-        ("unk", c_int32),
+        ("class_package_name", c_uint32),    # ClassPackage.Index (FName part 1)
+        ("class_package_suffix", c_uint32),  # ClassPackage.Number (FName part 2)
+        ("class_name", c_uint32),            # ClassName.Index (FName part 1)
+        ("class_name_suffix", c_uint32),     # ClassName.Number (FName part 2)
+        ("outer_index", c_int32),            # OuterIndex: resolve_object
+        ("object_name", c_uint32),           # ObjectName.Index (FName part 1)
+        ("object_name_suffix", c_uint32),    # ObjectName.Number (FName part 2)
     ]
 
     @property
@@ -346,22 +370,19 @@ class IJ2ImportTableEntry(IJ2TableEntry, UETableEntryBase):
 
     def __repr__(self) -> str:
         return (
-            f"class_pkg={hex_s(self.import_class_package)} "
-            f"outer={hex_s(self.import_outer_class)} "
-            f"ref={hex_s(self.import_class_reference)} "
-            f"{hex_s(self.import_name)}: {self.name}"
+            f"class_pkg={hex_s(self.class_package_name)} "
+            f"class={hex_s(self.class_name)} "
+            f"outer={hex_s(self.outer_index)} "
+            f"{hex_s(self.object_name)}: {self.name}"
         )
 
     def resolve(self, name_table: list, import_table: list, export_table: list):
-        # import_class_package is a name index (e.g., "Core")
-        self.class_package_name = name_table[self.import_class_package]
-        # import_outer_class is a name index for the class (e.g., "Class", "Package")
-        self.outer_class_name = name_table[self.import_outer_class]
-        self.name = name_table[self.import_name]
-        self.suffix = self.import_name_suffix
-        self.package = self.resolve_object(self.import_class_reference, import_table, export_table)
+        self.class_package = name_table[self.class_package_name]
+        self.outer_class_name = name_table[self.class_name]
+        self.name = name_table[self.object_name]
+        self.suffix = self.object_name_suffix
+        self.package = self.resolve_object(self.outer_index, import_table, export_table)
         # Set outer_class as a string for display purposes
         self.outer_class = type('NameHolder', (), {'name': self.outer_class_name})()
-        self.unknown = None
 
         self.resolved = True
