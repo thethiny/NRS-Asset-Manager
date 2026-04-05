@@ -6,7 +6,7 @@ from mk_utils.nrs.ue3_common import get_handlers
 
 ClassHandlers = get_handlers()
 
-def extract_all(files: List[Union[Tuple[str, str], str]], output_dir: str = "extracted", overwrite = False):
+def extract_all(files: Union[List[Union[Tuple[str, str], str]], List[str]], output_dir: str = "extracted", overwrite = False):
     saved = []
     for info in files:
         file, psf_source = info if not isinstance(info, str) else (info, "")
