@@ -58,18 +58,18 @@ mk_utils/
 ├── nrs/
 │   ├── ue3_common.py          # Shared base classes
 │   ├── compression/           # Oodle v4/v5 DLL wrappers
-│   ├── localization_parser.py # Coalesced AES decryption
-│   ├── ij2/                   # Injustice 2
-│   │   ├── archive.py         # .xxx → Midway builder
-│   │   ├── midway.py          # Table parser + TFC reader
-│   │   ├── ue3_common.py      # UE structs
-│   │   ├── ue3_properties.py  # Property deserializer
-│   │   └── class_handlers/    # Database, Texture2D → JSON/DDS
-│   └── mk11/                  # Mortal Kombat 11 (same structure)
-├── scripts/                   # Game-specific extractor entry points
+│   ├── localization_parser.py # Coalesced AES decryption (shared across games)
+│   └── <game>/                # Per-game module (mk11/, ij2/, ...)
+│       ├── ue3_common.py      # Structs (header, tables, archive base)
+│       ├── archive.py         # .xxx parser + midway builder
+│       ├── midway.py          # Table parser + external data reader
+│       ├── ue3_properties.py  # Property deserializer
+│       └── class_handlers/    # Export processors (Serializable→JSON, Texture2D→DDS)
+├── scripts/                   # Per-game extraction entry points
 └── utils/                     # FileReader, Struct helpers
 tests/                         # Pytest suite (gamedata + validation + per-handler)
 wiki/                          # GitHub Wiki pages
+boilerplate/                   # Template for adding new game support
 ```
 
 ## Documentation
