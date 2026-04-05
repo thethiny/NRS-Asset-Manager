@@ -57,7 +57,7 @@ main.py                        # CLI entry point (auto-detects game)
 mk_utils/
 ├── nrs/
 │   ├── ue3_common.py          # Shared base classes
-│   ├── compression/           # Oodle v4/v5 DLL wrappers
+│   ├── compression/           # Oodle DLL wrappers
 │   ├── localization_parser.py # Coalesced AES decryption (shared across games)
 │   └── <game>/                # Per-game module (mk11/, ij2/, ...)
 │       ├── ue3_common.py      # Structs (header, tables, archive base)
@@ -68,57 +68,34 @@ mk_utils/
 ├── scripts/                   # Per-game extraction entry points
 └── utils/                     # FileReader, Struct helpers
 tests/                         # Pytest suite (gamedata + validation + per-handler)
-wiki/                          # GitHub Wiki pages
 boilerplate/                   # Template for adding new game support
 ```
 
 ## Documentation
 
-Full documentation is available in the [wiki/](wiki/) folder, designed as a GitHub Wiki:
+Full documentation is available on the [GitHub Wiki](https://github.com/thethiny/NRS-Asset-Manager/wiki).
 
-| Topic | Page |
-|-------|------|
-| Architecture | [Extraction Pipeline](wiki/Extraction-Pipeline.md) |
-| File formats | [File Format Overview](wiki/File-Format-Overview.md) |
-| Adding games | [How to Expand](wiki/How-to-Expand.md) |
-| IJ2 format | [Injustice 2 Format](wiki/Injustice-2-Format.md) |
-| MK11 format | [MK11 Format](wiki/MK11-Format.md) |
-| Side-by-side comparison | [Format Comparison](wiki/Format-Comparison.md) |
-| IJ2 inventory system | [IJ2 Inventory System](wiki/IJ2-Inventory-System.md) |
-| IJ2 gear randomization | [IJ2 Gear Randomization](wiki/IJ2-Gear-Randomization.md) |
-| Database handler | [Database Handler](wiki/Database-Handler.md) |
-| Texture2D handler | [Texture2D Handler](wiki/Texture2D-Handler.md) |
-| UE3 property types | [UE3 Property Types](wiki/UE3-Property-Types.md) |
-| Enum reference | [Enums Reference](wiki/Enums-Reference.md) |
-| Known issues | [Known Limitations](wiki/Known-Limitations.md) |
-
-## Testing
-
-```bash
 # Run all tests
+```bash
 python -m pytest tests/ -v
+```
 
 # Run only gamedata tests (uses files in gamedata/ folder)
+```bash
 python -m pytest tests/test_ij2_gamedata.py tests/test_mk11_gamedata.py -v
+```
 
 # Run pass validation (copies from game install, needs .env)
+```bash
 python -m pytest tests/test_ij2_pass_validation.py tests/test_mk11_pass_validation.py -v
 ```
 
 Configure game paths in `.env`:
-```
-IJ2_ASSET_DIR=J:\SteamLibrary\steamapps\common\Injustice2\Asset
-MK11_ASSET_DIR=H:\MK11\Asset
+```bash
+IJ2_ASSET_DIR=/path/to/IJ2/Asset
+MK11_ASSET_DIR=/path/to/MK11/Asset
 ```
 
 ## Task List
 
 See [TASKLIST.md](TASKLIST.md) for the current completion status and roadmap.
-
-## Requirements
-
-- Python 3.9+
-- Oodle DLL: `oo2core_4_win64.dll` (IJ2) and/or `oo2core_5_win64.dll` (MK11) in the working directory
-- `python-dotenv` (for tests)
-- `dds` library (for PNG conversion from DDS)
-- `requests` (for CaseInsensitiveDict)
