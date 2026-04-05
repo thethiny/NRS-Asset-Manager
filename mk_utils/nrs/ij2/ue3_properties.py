@@ -215,11 +215,9 @@ class MapProperty(UProperty):
             return object
         elif key_name in cls.NAME_KEY_MAPS:
             object = {}
-            # Name key = 8 bytes, so value_size = entry_size - 8
-            value_size = entry_size - 8 if entry_size > 8 else -1
             for i in range(elements):
                 key = NameProperty.read_data(file_handle, name_table)
-                value = StructProperty.read_data(file_handle, name_table, False, read_size=value_size)
+                value = StructProperty.read_data(file_handle, name_table, False)
                 object.setdefault(key, []).append(value)
             return object
         elif key_name in cls.STRUCT_KEY_MAPS:
