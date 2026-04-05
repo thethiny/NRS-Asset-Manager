@@ -26,6 +26,8 @@ from mk_utils.utils.structs import Struct
 class IJ2UE3Asset(IJ2Archive):
     """Parser for IJ2 .xxx compressed archive files."""
 
+    VERSION_RANGE = range(0x254, 0x2F8)  # IJ2 engine versions (retail = 0x2DC)
+
     def __init__(self, path: str, extra_path: str = ""):
         super().__init__(path, extra_path)
 

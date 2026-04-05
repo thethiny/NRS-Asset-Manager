@@ -81,6 +81,9 @@ class MK11AssetPackage(Struct):
 
 
 class MK11UE3Asset(MK11Archive): # TODO: For each archive type detect its game version and call the appropriate archiver
+
+    VERSION_RANGE = range(0x2F8, 0x350)  # MK11 engine versions (retail = 0x301)
+
     def __init__(self, path: str, extra_path: str = ""):
         super().__init__(path, extra_path)
 
