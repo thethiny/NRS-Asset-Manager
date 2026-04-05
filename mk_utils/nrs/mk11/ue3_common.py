@@ -266,18 +266,18 @@ class MK11NoneTableEntry(MK11TableEntry):
 
 
 class MK11ExportTableEntry(MK11TableEntry, UETableEntryBase):
-    _fields_ = [
-        ("object_class", c_int32), # 0 = None, > 0 = exports[i-1], < 0 = imports[abs(i)-1]
-        ("object_outer_class", c_int32), # 0 = None, > 0 = exports[i-1], < 0 = imports[abs(i)-1]
-        ("object_name", c_int32), # names[i]
-        ("object_name_suffix", c_uint32),
-        ("object_super", c_int32), # 0 = None, > 0 = exports[i-1], < 0 = imports[abs(i)-1]
-        ("object_flags", c_uint64),
-        ("object_guid", GUID),
-        ("object_main_package", c_uint32), # names[i]
+    _fields_ = [ # resolve_object = 0 -> None, > 0 -> exports[i-1], < 0 -> imports[abs(i)-1]
+        ("class_index", c_int32),            # ClassIndex: resolve_object -> class type (e.g. Package, Texture2D)
+        ("outer_index", c_int32),            # OuterIndex: resolve_object -> parent/container
+        ("object_name", c_uint32),           # ObjectName.Index: name table index
+        ("object_name_suffix", c_uint32),    # ObjectName.Number: FName instance number
+        ("super_index", c_int32),            # SuperIndex: resolve_object -> superclass/archetype
+        ("object_flags", c_uint64),          # ObjectFlags
+        ("object_guid", GUID),               # ObjectGuid (16 bytes)
+        ("object_main_package", c_uint32),   # Name table index -> "Package", "Other", etc. # names[i]
         ("unk_1", c_uint32),
-        ("object_size", c_uint32),
-        ("object_offset", c_uint64),
+        ("object_size", c_uint32),           # SerialSize: export data size in bytes
+        ("object_offset", c_uint64),         # SerialOffset: export data offset in Midway
         ("unk_2", c_uint64),
         ("unk_3", c_uint32),
     ]
@@ -336,24 +336,24 @@ class MK11ExportTableEntry(MK11TableEntry, UETableEntryBase):
             f"offset={hex_s(self.object_offset)} "
             f"size=({hex_s(self.object_size)}) "
             f"package={hex_s(self.object_main_package)} "
-            f"folder={hex_s(self.object_outer_class)} "
-            f"class={hex_s(self.object_class)} "
-            f"super={hex_s(self.object_super)} "
+            f"outer={hex_s(self.outer_index)} "
+            f"class={hex_s(self.class_index)} "
+            f"super={hex_s(self.super_index)} "
             f"name={hex_s(self.object_name)}: {self.name}"
         )
 
     def resolve(self, name_table: list, import_table: list, export_table: list):
-        object_class = self.resolve_object(self.object_class, import_table, export_table)
-        object_outer_class = self.resolve_object(self.object_outer_class, import_table, export_table)
+        object_class = self.resolve_object(self.class_index, import_table, export_table)
+        object_outer = self.resolve_object(self.outer_index, import_table, export_table)
         name = name_table[self.object_name]
-        object_super = self.resolve_object(self.object_super, import_table, export_table)
+        object_super = self.resolve_object(self.super_index, import_table, export_table)
         package = name_table[self.object_main_package]
 
         self.class_ = object_class # File Extension
-        self.class_outer = object_outer_class # Unknown
+        self.class_outer = object_outer # Parent container
         self.name = name
         self.suffix = self.object_name_suffix
-        self.class_super = object_super # Unknown
+        self.class_super = object_super # Superclass/archetype
         self.package = package # MK11 Metadata
 
         # logging.getLogger("Common").debug(f"Resolved Export: {self.full_name}")
@@ -364,11 +364,11 @@ class MK11ExportTableEntry(MK11TableEntry, UETableEntryBase):
 
 class MK11ImportTableEntry(MK11TableEntry, UETableEntryBase):
     _fields_ = [
-        ("import_class_package", c_int32), # Package/Other/HeaderData
-        ("import_name", c_int32),
-        ("import_name_suffix", c_int32),
-        ("import_outer_class", c_int32),
-        ("object_name", c_int32), # 1 when root, 0 else
+        ("import_class_package", c_int32), # resolve_object -> parent chain (doubles as ClassPackage) # Package/Other/HeaderData
+        ("import_name", c_int32),          # name table index -> ObjectName.Index
+        ("import_name_suffix", c_int32),   # ObjectName.Number (suffix)
+        ("import_outer_class", c_int32),   # resolve_object -> always 0 in observed data
+        ("import_unk", c_int32),           # 0 or 1 flag, purpose unknown, possible 1 for root, 0 for nest
     ]
 
     @property
@@ -404,14 +404,14 @@ class MK11ImportTableEntry(MK11TableEntry, UETableEntryBase):
         if self.outer_class:
             string += f" : {self.outer_class.name}"
         if self.unknown:
-            string += f" -- {self.object_name}"
+            string += f" -- {self.import_unk}"
         return string
 
     def __repr__(self) -> str:
         return (
-            f"folder={hex_s(self.import_class_package)} "
+            f"parent={hex_s(self.import_class_package)} "
             f"outer={hex_s(self.import_outer_class)} "
-            f"unknown={hex_s(self.object_name)} "
+            f"unk={hex_s(self.import_unk)} "
             f"{hex_s(self.import_name)}: {self.name}"
         )
 
@@ -419,8 +419,8 @@ class MK11ImportTableEntry(MK11TableEntry, UETableEntryBase):
         self.package = self.resolve_object(self.import_class_package, import_table, export_table)
         self.name = name_table[self.import_name]
         self.suffix = self.import_name_suffix
-        self.outer_class = self.resolve_object(self.import_outer_class, import_table, export_table) # Uknown
-        self.unknown = self.resolve_object(self.object_name, import_table, export_table) # Unknown
+        self.outer_class = self.resolve_object(self.import_outer_class, import_table, export_table)
+        self.unknown = self.resolve_object(self.import_unk, import_table, export_table) # Unknown
 
         # logging.getLogger("Common").debug(f"Resolved Import: {self.full_name}")
         self.resolved = True
