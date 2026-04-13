@@ -403,49 +403,19 @@ class ArrayProperty(UProperty):
                 data.append(entry)
             return data
         else:
-            if key_name not in warned_classes and key_name not in [
-                "mItems", "mAssetGroups", "ReferencedObjects",
-            ]:
-                logging.getLogger("IJ2Database").warning(
-                    f"Array type {key_name} is not officially supported for IJ2! Proceed with caution!"
-                )
-                warned_classes.add(key_name)
-            # Use computed element size to prevent cascade on unknown struct arrays.
-            # Each element is returned as a raw hex blob with a clear "_UNPARSED" marker
-            # so the next developer can identify and properly decode these entries.
-            if is_fixed_size:
-                logging.getLogger("IJ2Database").warning(
-                    f"[UNPARSED] Array '{key_name}' elements emitted as raw hex "
-                    f"({elements_count} x {elem_size} bytes each). Decode in ue3_properties.py "
-                    f"by adding to FIXED_STRUCT_ARRAY_KEYS or defining proper element type."
-                )
-                for i in range(elements_count):
-                    raw_hex = file_handle.read(elem_size).hex()
-                    entry = {
-                        "_UNPARSED": True,
-                        "_note": f"Unknown struct array '{key_name}' -- decode in IJ2 ue3_properties.py",
-                        "_elem_size": elem_size,
-                        "_raw_hex": raw_hex,
-                    }
-                    data.append(entry)
-                return data
-
-            # Variable-size elements — can't split individually. Emit the whole array as one blob.
-            if data_bytes > 0:
-                logging.getLogger("IJ2Database").warning(
-                    f"[UNPARSED-VARSIZE] Array '{key_name}' has {elements_count} variable-sized "
-                    f"elements in {data_bytes} bytes (not evenly divisible). Emitting whole array as "
-                    f"single hex blob. Decode properly in ue3_properties.py."
-                )
-                raw_hex = file_handle.read(data_bytes).hex()
-                data.append({
-                    "_UNPARSED_VARSIZE": True,
-                    "_note": f"Variable-sized struct array '{key_name}' -- decode in IJ2 ue3_properties.py",
-                    "_elements_count": elements_count,
-                    "_total_size": data_bytes,
-                    "_raw_hex": raw_hex,
-                })
-                return data
+            # Unknown struct-array types: parse each element as a None-terminated
+            # UE3 property struct. IJ2's struct-array elements always end with a
+            # "None" FName terminator, so StructProperty.read_data() can find the
+            # right boundary on its own — no need to know the per-element size.
+            #
+            # This works for both "fixed-size" arrays (where every element happens
+            # to be the same byte count) and variable-size arrays (e.g. elements
+            # containing strings or inner arrays). Don't try to detect "fixed size"
+            # from `data_bytes % count == 0` — that's often a coincidence, and the
+            # fixed-size hex fallback splits variable elements at the wrong offsets.
+            #
+            # If this ever cascade-fails on a truly unknown property type, the
+            # surrounding handler will catch the exception and log the export.
             subtype = StructProperty
             sub_args = (name_table, False)  # headers=False
 
