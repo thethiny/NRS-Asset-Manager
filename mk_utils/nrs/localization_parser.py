@@ -25,6 +25,10 @@ class LocalizationParser(FileReader):
             logging.getLogger("LocalizationParser").debug("Encrypted File Detected")
             self.decrypt(decrypted_out_dir, aes_key)
 
+    @property
+    def is_config(self) -> bool:
+        return self.locale_type == "config"
+
     def decrypt(self, save_dir: str = "", aes_key: bytes = b""):
         if aes_key:
             cipher = AES.new(aes_key, AES.MODE_ECB)
