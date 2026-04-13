@@ -299,7 +299,7 @@ class IJ2Texture2DHandler(ClassHandler):
                 for m in mips
             ],
         }
-        with open(save_file, "w+") as f:
+        with open(save_file, "w+", encoding="utf-8") as f:
             json.dump(json_data, f, ensure_ascii=False, indent=4)
         logging.getLogger("IJ2Texture2D").info(f"Saved metadata: {save_file}")
         return save_file

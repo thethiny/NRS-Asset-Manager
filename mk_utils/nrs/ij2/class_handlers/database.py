@@ -38,6 +38,6 @@ class IJ2DatabaseHandler(ClassHandler):
 
     def save(self, data, export, asset_name, save_dir, *args, **kwargs):
         save_file = self.make_save_path(export, asset_name, save_dir)
-        with open(save_file, "w+") as f:
+        with open(save_file, "w+", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
         return save_file
