@@ -5,6 +5,7 @@ Based on the MK11 version but adapted for IJ2's property format.
 IJ2 being an older game may have slight differences in property encoding.
 """
 
+import ctypes
 import logging
 from ctypes import c_char, c_float, c_uint32, c_uint64
 from typing import Dict, Tuple, Type
@@ -120,8 +121,14 @@ class StrProperty(UProperty):
 class NameProperty(UProperty):
     @classmethod
     def read_data(cls, file_handle, name_table, *args, **kwargs):
-        name = Struct.read_buffer(file_handle, c_uint64)
-        name = name_table[name]
+        # IJ2 FName = (name_index: u32, suffix: u32)
+        # When suffix > 0, the full name is name_table[name_index] + "_" + str(suffix - 1)
+        # This differs from reading as a single u64 which breaks when suffix is non-zero
+        name_index = Struct.read_buffer(file_handle, c_uint32)
+        suffix = Struct.read_buffer(file_handle, c_uint32)
+        name = name_table[name_index]
+        if suffix > 0:
+            name = f"{name}_{suffix - 1}"
         return name
 
 
@@ -338,6 +345,26 @@ class ArrayProperty(UProperty):
         "WorstCaseItems",
         "Meshes",
     }
+    # Arrays with known fixed-size elements where inner struct parsing fails.
+    # Maps key_name → (element_size, field_extractors)
+    # field_extractors: list of (offset, name, ctype) to extract named fields from each element.
+    # Remaining bytes are skipped (unknown padding/fields).
+    FIXED_STRUCT_ARRAY_KEYS = {
+        # Slots: 36-byte elements, object reference (export index) at offset 24
+        "Slots": (36, [(24, "CAPItemPresetAsset", c_uint32)]),
+    }
+
+    @classmethod
+    def _read_fixed_struct_element(cls, file_handle, elem_size, field_extractors):
+        """Read a fixed-size struct element, extracting known fields by offset."""
+        start = file_handle.tell()
+        raw = file_handle.read(elem_size)
+        entry = {}
+        for offset, field_name, ctype in field_extractors:
+            size = ctypes.sizeof(ctype)
+            value = int.from_bytes(raw[offset:offset + size], byteorder="little", signed=False)
+            entry[field_name] = value
+        return entry
 
     @classmethod
     def read_data(cls, file_handle, name_table, headers: bool = True, key_name: str = "", read_size: int = -1, *args, **kwargs):
@@ -347,6 +374,12 @@ class ArrayProperty(UProperty):
         # Calculate per-element size for struct arrays
         data_bytes = read_size - 4 if read_size > 0 else -1  # subtract count field
         elem_size = data_bytes // elements_count if elements_count > 0 and data_bytes > 0 else -1
+        # Check if elements are fixed-size (total divides evenly)
+        is_fixed_size = (
+            elements_count > 0
+            and data_bytes > 0
+            and data_bytes % elements_count == 0
+        )
 
         if key_name in cls.STRING_ARRAY_KEYS:
             subtype = StrProperty
@@ -357,6 +390,18 @@ class ArrayProperty(UProperty):
         elif key_name in cls.INT_ARRAY_KEYS:
             subtype = DWordProperty
             sub_args = (c_uint32,)
+        elif key_name in cls.FIXED_STRUCT_ARRAY_KEYS:
+            fixed_elem_size, field_extractors = cls.FIXED_STRUCT_ARRAY_KEYS[key_name]
+            # Validate element size if we can compute it
+            if elem_size > 0 and elem_size != fixed_elem_size:
+                logging.getLogger("IJ2Database").warning(
+                    f"Array '{key_name}': expected {fixed_elem_size}-byte elements but computed {elem_size}. Using computed size."
+                )
+                fixed_elem_size = elem_size
+            for i in range(elements_count):
+                entry = cls._read_fixed_struct_element(file_handle, fixed_elem_size, field_extractors)
+                data.append(entry)
+            return data
         else:
             if key_name not in warned_classes and key_name not in [
                 "mItems", "mAssetGroups", "ReferencedObjects",
@@ -365,6 +410,42 @@ class ArrayProperty(UProperty):
                     f"Array type {key_name} is not officially supported for IJ2! Proceed with caution!"
                 )
                 warned_classes.add(key_name)
+            # Use computed element size to prevent cascade on unknown struct arrays.
+            # Each element is returned as a raw hex blob with a clear "_UNPARSED" marker
+            # so the next developer can identify and properly decode these entries.
+            if is_fixed_size:
+                logging.getLogger("IJ2Database").warning(
+                    f"[UNPARSED] Array '{key_name}' elements emitted as raw hex "
+                    f"({elements_count} x {elem_size} bytes each). Decode in ue3_properties.py "
+                    f"by adding to FIXED_STRUCT_ARRAY_KEYS or defining proper element type."
+                )
+                for i in range(elements_count):
+                    raw_hex = file_handle.read(elem_size).hex()
+                    entry = {
+                        "_UNPARSED": True,
+                        "_note": f"Unknown struct array '{key_name}' -- decode in IJ2 ue3_properties.py",
+                        "_elem_size": elem_size,
+                        "_raw_hex": raw_hex,
+                    }
+                    data.append(entry)
+                return data
+
+            # Variable-size elements — can't split individually. Emit the whole array as one blob.
+            if data_bytes > 0:
+                logging.getLogger("IJ2Database").warning(
+                    f"[UNPARSED-VARSIZE] Array '{key_name}' has {elements_count} variable-sized "
+                    f"elements in {data_bytes} bytes (not evenly divisible). Emitting whole array as "
+                    f"single hex blob. Decode properly in ue3_properties.py."
+                )
+                raw_hex = file_handle.read(data_bytes).hex()
+                data.append({
+                    "_UNPARSED_VARSIZE": True,
+                    "_note": f"Variable-sized struct array '{key_name}' -- decode in IJ2 ue3_properties.py",
+                    "_elements_count": elements_count,
+                    "_total_size": data_bytes,
+                    "_raw_hex": raw_hex,
+                })
+                return data
             subtype = StructProperty
             sub_args = (name_table, False)  # headers=False
 
