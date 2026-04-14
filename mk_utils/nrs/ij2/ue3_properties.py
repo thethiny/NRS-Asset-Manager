@@ -204,6 +204,20 @@ class MapProperty(UProperty):
         "MD5HashToItemMap",
     }
 
+    @staticmethod
+    def _convert_md5_digest(obj):
+        """Post-process: if ``obj`` is a ``{"digest": [16 ints]}`` dict
+        (FMD5Hash read without struct headers), convert to a 32-char hex
+        string. Leaves everything else unchanged."""
+        if isinstance(obj, dict) and "digest" in obj and len(obj) == 1:
+            digest = obj["digest"]
+            if isinstance(digest, list) and len(digest) == 16:
+                try:
+                    return "".join(f"{b & 0xFF:02x}" for b in digest)
+                except (TypeError, ValueError):
+                    pass
+        return obj
+
     @classmethod
     def read_data(cls, file_handle, name_table, headers, key_name: str = "", read_size: int = -1, *args, **kwargs):
         start_pos = file_handle.tell()
@@ -236,11 +250,13 @@ class MapProperty(UProperty):
             for i in range(elements):
                 entry_start = file_handle.tell()
                 entry = StructProperty.read_data(file_handle, name_table, False, read_size=entry_size)
+                entry = cls._convert_md5_digest(entry)
                 # If we didn't consume the full entry, read the remaining as value struct
                 consumed = file_handle.tell() - entry_start
                 remaining = entry_size - consumed if entry_size > 0 else 0
                 if remaining > 8:  # enough for at least one property header
                     value = StructProperty.read_data(file_handle, name_table, False, read_size=remaining)
+                    value = cls._convert_md5_digest(value)
                     result.append({"key": entry, "value": value})
                 else:
                     if remaining > 0:
@@ -307,6 +323,25 @@ class FGuid(StructProperty):
     @classmethod
     def read_data(cls, file_handle, *args, **kwargs):
         return str(Struct.read_buffer(file_handle, GUID))
+
+
+class FMD5Hash(StructProperty):
+    """
+    MD5 hash struct — 16-byte digest stored as a C-style ``digest[16]`` byte
+    array. The parent StructProperty reader parses it into
+    ``{"digest": [b0, b1, ..., b15]}``. We convert that to a 32-char lowercase
+    hex string (e.g. ``"7cbc713d215e61cab80879558e8d8781"``) so it matches the
+    format used by ``ITEMDEFINITIONSAUX.mAsset``, ``CAPPRESETS.mItemHashes``,
+    and the hex-hash convention throughout the IJ2 data pipeline.
+    """
+    @classmethod
+    def read_data(cls, file_handle, *args, **kwargs):
+        result = super().read_data(file_handle, *args, **kwargs)
+        if isinstance(result, dict) and "digest" in result:
+            digest = result["digest"]
+            if isinstance(digest, list) and len(digest) == 16:
+                return "".join(f"{b & 0xFF:02x}" for b in digest)
+        return result
 
 
 class FVector2D(StructProperty):
@@ -445,6 +480,7 @@ PropertyMap: Dict[str, Type[UProperty]] = {
 
 StructPropertyMap: Dict[str, Type[StructProperty]] = {
     "FGuid": FGuid,
+    "FMD5HashData": FMD5Hash,  # game uses "FMD5HashData" as the struct_type name
     "FVector2D": FVector2D,
     "FLinearColor": FLinearColor,
 }
