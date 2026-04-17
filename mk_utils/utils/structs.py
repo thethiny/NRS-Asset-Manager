@@ -1,4 +1,4 @@
-from ctypes import Array, Structure, addressof, sizeof, string_at, c_byte, c_ubyte
+from ctypes import Array, Structure, c_int8, c_uint8, c_byte, c_ubyte, sizeof, string_at, addressof
 from typing import Any, Type, TypeVar
 
 
@@ -46,7 +46,9 @@ class Struct(Structure):
             return value
         elif hasattr(value, "value"):
             return value.value
-        elif isinstance(value, Array) and issubclass(value._type_, (c_ubyte, c_byte)):
+        elif isinstance(value, Array) and issubclass(value._type_, (c_ubyte, c_byte, c_uint8, c_int8)):
+            # TODO: Either force signed on byte and int8 or remove c_byte from here
+            # TODO: Consider returning base64 - Most likely not to avoid unnecessary work
             return bytes(value)
         else:
             raise TypeError(f"Unsupported read_type: {read_type}")

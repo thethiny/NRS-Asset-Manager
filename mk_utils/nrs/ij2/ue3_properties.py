@@ -7,7 +7,8 @@ IJ2 being an older game may have slight differences in property encoding.
 
 import ctypes
 import logging
-from ctypes import c_char, c_float, c_uint32, c_uint64
+import base64
+from ctypes import c_char, c_float, c_uint8, c_uint32, c_uint64
 from typing import Dict, Tuple, Type
 
 from mk_utils.nrs.ue3_common import GUID
@@ -192,6 +193,7 @@ class MapProperty(UProperty):
     STRING_KEY_MAPS = {
         "mIntroTracks",
         "mPresets",
+        "tweakVarMap",
     }
     # Maps with FName keys (u64 name index) + struct values
     NAME_KEY_MAPS = {
@@ -380,6 +382,9 @@ class ArrayProperty(UProperty):
         "WorstCaseItems",
         "Meshes",
     }
+    BYTE_ARRAY_KEYS = {
+        "bytes",
+    }
     # Arrays with known fixed-size elements where inner struct parsing fails.
     # Maps key_name → (element_size, field_extractors)
     # field_extractors: list of (offset, name, ctype) to extract named fields from each element.
@@ -425,6 +430,11 @@ class ArrayProperty(UProperty):
         elif key_name in cls.INT_ARRAY_KEYS:
             subtype = DWordProperty
             sub_args = (c_uint32,)
+        elif key_name in cls.BYTE_ARRAY_KEYS:
+            subtype = ByteProperty
+            sub_args = (c_uint8 * elements_count,)
+            value = subtype.read_data(file_handle, *sub_args)
+            return base64.b64encode(value).decode("ascii")
         elif key_name in cls.FIXED_STRUCT_ARRAY_KEYS:
             fixed_elem_size, field_extractors = cls.FIXED_STRUCT_ARRAY_KEYS[key_name]
             # Validate element size if we can compute it

@@ -19,6 +19,8 @@ class IJ2DatabaseHandler(ClassHandler):
         "dcf2cappresets",
         "dcf2capinfotable",
         "dcf2materialpalettetable",
+        "mktweakvars",
+        "umktweakvars",
     }
 
     def parse(self):

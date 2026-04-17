@@ -19,6 +19,7 @@ from typing import Any, Union
 
 from mk_utils.nrs.compression.base import CompressionBase
 from mk_utils.nrs.compression.oodle import OodleV4
+from mk_utils.nrs.compression.zlib import ZlibCompression
 from mk_utils.nrs.ij2.enums import ECompressionFlags
 from mk_utils.nrs.ue3_common import GUID, UETableEntryBase
 from mk_utils.utils.filereader import FileReader
@@ -150,12 +151,17 @@ class IJ2Archive(FileReader):
 
     @classmethod
     def get_compressor(cls, compression: Union[int, ECompressionFlags]):
-        if isinstance(compression, int):
-            compression = ECompressionFlags(compression)
-        if compression >= ECompressionFlags.OODLE:
+        compression_value = int(compression)
+        method = compression_value & int(ECompressionFlags.COMPRESS_ValidMethods)
+
+        if method & int(ECompressionFlags.OODLE):
             return OodleV4()
-        else:
-            raise NotImplementedError(f"Only Oodle Compression is supported")
+        if method & int(ECompressionFlags.ZLIB):
+            return ZlibCompression()
+
+        raise NotImplementedError(
+            f"Unsupported IJ2 compression method: 0x{compression_value:X}"
+        )
 
     @classmethod
     def parse_blocks_chunk(cls, block: IJ2BlockHeader, mm):

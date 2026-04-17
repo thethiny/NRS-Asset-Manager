@@ -10,7 +10,7 @@ class ECompressionFlags(IntEnum):
     COMPRESS_PFS = 0x0008
     COMPRESS_BiasMemory = 0x0010
     COMPRESS_BiasSpeed = 0x0020
-    COMPRESS_ValidMethods = 0x000F
+    COMPRESS_ValidMethods = 0x000F # Bitmask
 
 
 class EPixelFormat(IntEnum):
