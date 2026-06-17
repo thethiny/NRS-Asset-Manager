@@ -427,6 +427,47 @@ def cmd_mko(args):
         print(f"\nDumped {len(mko_files)} MKO files to {output}/")
 
 
+def _make_vfs_manager(path):
+    from mk_utils.nrs.vfs.mount_manager import MountManager
+    mgr = MountManager()
+    if os.path.isdir(path):
+        mgr.mount_directory(path)
+    else:
+        mgr.mount(path)
+    return mgr
+
+
+def cmd_vfs(args):
+    """Virtual filesystem operations."""
+    mgr = _make_vfs_manager(args.path)
+
+    if args.vfs_command == "mount":
+        print(mgr)
+
+    elif args.vfs_command == "ls":
+        children = mgr.ls(args.vfs_path)
+        if not children:
+            print(f"Empty or not found: {args.vfs_path}")
+            return
+        for child in children:
+            if child.is_dir:
+                print(f"  [DIR]  {child.name}/ ({child.export_count} exports)")
+            else:
+                exp = child.export
+                cls = exp.class_name if exp else ""
+                size = exp.object_size if exp else 0
+                print(f"  [{cls}]  {child.name} ({size} bytes)")
+
+    elif args.vfs_command == "tree":
+        print(mgr.render_tree(args.vfs_path, args.depth))
+
+
+def cmd_browse(args):
+    """Launch DearPyGui asset browser."""
+    from gui.browser import launch_browser
+    launch_browser(args.path)
+
+
 # ── CLI Setup ────────────────────────────────────────────────────────────────
 
 def main():
@@ -483,6 +524,26 @@ def main():
     p.add_argument("-o", "--output", help="Output directory")
     p.add_argument("--list", action="store_true", help="List functions only (no JSON dump)")
 
+    # vfs
+    vfs_parser = subparsers.add_parser("vfs", help="Virtual filesystem operations")
+    vfs_sub = vfs_parser.add_subparsers(dest="vfs_command", required=True)
+
+    p = vfs_sub.add_parser("mount", help="Mount .xxx files and show summary")
+    p.add_argument("path", help="Path to .xxx file or directory")
+
+    p = vfs_sub.add_parser("ls", help="List VFS directory contents")
+    p.add_argument("path", help="Path to .xxx file or directory to mount")
+    p.add_argument("vfs_path", nargs="?", default="/", help="VFS path to list")
+
+    p = vfs_sub.add_parser("tree", help="Print VFS tree")
+    p.add_argument("path", help="Path to .xxx file or directory to mount")
+    p.add_argument("vfs_path", nargs="?", default="/", help="VFS subtree root")
+    p.add_argument("--depth", type=int, default=-1, help="Max depth (-1=unlimited)")
+
+    # browse
+    p = subparsers.add_parser("browse", help="Launch DearPyGui asset browser")
+    p.add_argument("path", nargs="?", help="Optional initial directory to scan")
+
     args = parser.parse_args()
 
     level = logging.DEBUG if args.verbose else logging.INFO
@@ -497,6 +558,8 @@ def main():
         "export": cmd_export,
         "bulk": cmd_bulk,
         "mko": cmd_mko,
+        "vfs": cmd_vfs,
+        "browse": cmd_browse,
     }
 
     commands[args.command](args)
