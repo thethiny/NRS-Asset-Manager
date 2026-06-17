@@ -142,7 +142,10 @@ class IJ2MidwayAsset(IJ2Archive):
     def parse_uobject_table(self, table: IJ2TableMeta, type_):
         self.mm.seek(table.offset)
         for i in range(table.entries):
-            entry = Struct.read_buffer(self.mm, type_)
+            if hasattr(type_, 'read') and type_.read is not Struct.read:
+                entry = type_.read(self.mm)
+            else:
+                entry = Struct.read_buffer(self.mm, type_)
             yield entry
 
     def resolve_table_info(self, table):

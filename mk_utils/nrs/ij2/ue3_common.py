@@ -154,8 +154,11 @@ class IJ2Archive(FileReader):
             compression = ECompressionFlags(compression)
         if compression >= ECompressionFlags.OODLE:
             return OodleV4()
+        elif compression == ECompressionFlags.ZLIB:
+            from mk_utils.nrs.compression.zlib_ import ZlibCompression
+            return ZlibCompression()
         else:
-            raise NotImplementedError(f"Only Oodle Compression is supported")
+            raise NotImplementedError(f"Compression {compression} is not supported")
 
     @classmethod
     def parse_blocks_chunk(cls, block: IJ2BlockHeader, mm):
@@ -240,6 +243,17 @@ class IJ2ExportTableEntry(IJ2TableEntry, UETableEntryBase):
         ("component_map_count", c_uint32), # ComponentMap entry count (TMap serialization)
         ("export_flags", c_uint32),        # ExportFlags
     ]
+
+    @classmethod
+    def read(cls, file_handle):
+        entry = Struct.read_buffer(file_handle, cls)
+        if entry.component_map_count > 0:
+            # Each ComponentMap entry is FName(8) + int(4) = 12 bytes
+            skip_bytes = entry.component_map_count * 12
+            file_handle.seek(skip_bytes, 1)
+            # Re-read export_flags from current position (it was misread as part of map data)
+            entry.export_flags = Struct.read_buffer(file_handle, c_uint32)
+        return entry
 
     @property
     def object_size(self):

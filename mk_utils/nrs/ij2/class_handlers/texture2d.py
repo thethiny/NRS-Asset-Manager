@@ -81,25 +81,45 @@ class IJ2Texture2DHandler(ClassHandler):
     def _parse_mips(self) -> List[dict]:
         """Parse IJ2 Texture2D mip data structure.
 
-        Structure before mips:
-        - 16 bytes padding/unknown
-        - u64 unknown_offset_1
-        - 16 bytes padding/unknown
-        - u64 unknown_offset_2
-        - 8 bytes padding
-        - u32 mip_count
+        After tagged properties, UTexture2D serializes:
+        1. SourceArt (FUntypedBulkData): flags(u32) + count(u32) + size(u64) + offset(u64)
+           If not "unused" (flags & 1 == 0), inline data follows.
+        2. CustomMipSourceArt (FUntypedBulkData): same layout.
+        3. ResourceMemHelper: two u32 fields.
+        4. MipMemoryOffsets: TArray<int> (u32 count + count*4 bytes).
+        5. Mips: TArray<FTexture2DMipMap> (u32 count + entries).
 
         Per mip:
-        - u32 flags (bit 0 = store in separate TFC file)
-        - u32 element_count (uncompressed data size in bytes)
-        - u64 size_on_disk (compressed size for TFC, same as element_count for inline)
-        - u64 offset_in_file (offset in TFC file or absolute offset in UPK)
-        - [element_count bytes of inline data if flags == 0]
+        - FUntypedBulkData: flags(u32) + count(u32) + size(u64) + offset(u64)
+          + [inline data if not stored externally]
         - u32 width
         - u32 height
         """
-        # Skip header area (16 + 8 + 16 + 8 + 8 + 4 padding = 0x3C bytes to mip_count)
-        self.mm.seek(0x3C, 1)
+        # SourceArt bulk data header
+        source_art_flags = Struct.read_buffer(self.mm, c_uint32)
+        source_art_count = Struct.read_buffer(self.mm, c_uint32)
+        source_art_size = Struct.read_buffer(self.mm, c_uint64)
+        source_art_offset = Struct.read_buffer(self.mm, c_uint64)
+        if not (source_art_flags & BULKDATA_StoreInSeparateFile) and source_art_count > 0:
+            self.mm.seek(source_art_count, 1)
+
+        # CustomMipSourceArt bulk data header
+        custom_mip_flags = Struct.read_buffer(self.mm, c_uint32)
+        custom_mip_count = Struct.read_buffer(self.mm, c_uint32)
+        custom_mip_size = Struct.read_buffer(self.mm, c_uint64)
+        custom_mip_offset = Struct.read_buffer(self.mm, c_uint64)
+        if not (custom_mip_flags & BULKDATA_StoreInSeparateFile) and custom_mip_count > 0:
+            self.mm.seek(custom_mip_count, 1)
+
+        # ResourceMemHelper (2 x u32)
+        Struct.read_buffer(self.mm, c_uint32)
+        Struct.read_buffer(self.mm, c_uint32)
+
+        # MipMemoryOffsets TArray<int>
+        mip_mem_count = Struct.read_buffer(self.mm, c_uint32)
+        if mip_mem_count > 0:
+            self.mm.seek(mip_mem_count * 4, 1)
+
         mip_count = Struct.read_buffer(self.mm, c_uint32)
 
         mips = []

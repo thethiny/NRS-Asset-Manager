@@ -384,6 +384,49 @@ def cmd_bulk(args):
     _for_each_xxx(args, _bulk)
 
 
+def cmd_mko(args):
+    """Parse and dump MKO (MKScript) bytecode files."""
+    from mk_utils.nrs.mkscript.mko_parser import MKOParser
+    from mk_utils.nrs.mkscript.mko_dumper import dump_mko
+
+    output = args.output or "extracted"
+
+    mko_files = []
+    if os.path.isfile(args.path):
+        mko_files = [args.path]
+    elif os.path.isdir(args.path):
+        mko_files = sorted(
+            os.path.join(args.path, f)
+            for f in os.listdir(args.path)
+            if f.lower().endswith(".mko")
+        )
+
+    if not mko_files:
+        print(f"No .mko files found at {args.path}")
+        return
+
+    for f in mko_files:
+        try:
+            parser = MKOParser(f)
+            parser.parse()
+
+            if args.list:
+                name = os.path.basename(f)
+                print(f"\n{name}: {len(parser.functions)} functions, "
+                      f"{len(parser.externs)} externs, {len(parser.assets)} assets")
+                for func in parser.functions:
+                    print(f"  {func}")
+            else:
+                name = os.path.splitext(os.path.basename(f))[0]
+                saved = dump_mko(parser, output, name)
+                print(f"  {saved}")
+        except Exception as e:
+            logging.getLogger("Main").error(f"{f}: {e}")
+
+    if not args.list:
+        print(f"\nDumped {len(mko_files)} MKO files to {output}/")
+
+
 # ── CLI Setup ────────────────────────────────────────────────────────────────
 
 def main():
@@ -434,6 +477,12 @@ def main():
     p.add_argument("path", help="Path to .xxx file or directory")
     p.add_argument("-o", "--output", help="Output directory")
 
+    # mko
+    p = subparsers.add_parser("mko", help="Parse and dump MKO script files")
+    p.add_argument("path", help="Path to .mko file or directory of .mko files")
+    p.add_argument("-o", "--output", help="Output directory")
+    p.add_argument("--list", action="store_true", help="List functions only (no JSON dump)")
+
     args = parser.parse_args()
 
     level = logging.DEBUG if args.verbose else logging.INFO
@@ -447,6 +496,7 @@ def main():
         "extract-all": cmd_extract_all,
         "export": cmd_export,
         "bulk": cmd_bulk,
+        "mko": cmd_mko,
     }
 
     commands[args.command](args)
