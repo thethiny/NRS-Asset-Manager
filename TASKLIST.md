@@ -3,7 +3,7 @@
 ## UE3 Asset
 - [ ] Compression: None  
 - [x] Compression: Oodle  
-- [ ] Compression: ZLIB  
+- [x] Compression: ZLIB  
 - [x] Packages  
 - [x] Extra Packages  
 - [x] PSF Data  

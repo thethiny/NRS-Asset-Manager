@@ -5,8 +5,10 @@ Based on the MK11 version but adapted for IJ2's property format.
 IJ2 being an older game may have slight differences in property encoding.
 """
 
+import ctypes
 import logging
-from ctypes import c_char, c_float, c_uint32, c_uint64
+import base64
+from ctypes import c_char, c_float, c_uint8, c_uint32, c_uint64
 from typing import Dict, Tuple, Type
 
 from mk_utils.nrs.ue3_common import GUID
@@ -120,8 +122,14 @@ class StrProperty(UProperty):
 class NameProperty(UProperty):
     @classmethod
     def read_data(cls, file_handle, name_table, *args, **kwargs):
-        name = Struct.read_buffer(file_handle, c_uint64)
-        name = name_table[name]
+        # IJ2 FName = (name_index: u32, suffix: u32)
+        # When suffix > 0, the full name is name_table[name_index] + "_" + str(suffix - 1)
+        # This differs from reading as a single u64 which breaks when suffix is non-zero
+        name_index = Struct.read_buffer(file_handle, c_uint32)
+        suffix = Struct.read_buffer(file_handle, c_uint32)
+        name = name_table[name_index]
+        if suffix > 0:
+            name = f"{name}_{suffix - 1}"
         return name
 
 
@@ -185,6 +193,7 @@ class MapProperty(UProperty):
     STRING_KEY_MAPS = {
         "mIntroTracks",
         "mPresets",
+        "tweakVarMap",
     }
     # Maps with FName keys (u64 name index) + struct values
     NAME_KEY_MAPS = {
@@ -196,6 +205,20 @@ class MapProperty(UProperty):
         "mHellboyHeadIndexTable",
         "MD5HashToItemMap",
     }
+
+    @staticmethod
+    def _convert_md5_digest(obj):
+        """Post-process: if ``obj`` is a ``{"digest": [16 ints]}`` dict
+        (FMD5Hash read without struct headers), convert to a 32-char hex
+        string. Leaves everything else unchanged."""
+        if isinstance(obj, dict) and "digest" in obj and len(obj) == 1:
+            digest = obj["digest"]
+            if isinstance(digest, list) and len(digest) == 16:
+                try:
+                    return "".join(f"{b & 0xFF:02x}" for b in digest)
+                except (TypeError, ValueError):
+                    pass
+        return obj
 
     @classmethod
     def read_data(cls, file_handle, name_table, headers, key_name: str = "", read_size: int = -1, *args, **kwargs):
@@ -229,11 +252,13 @@ class MapProperty(UProperty):
             for i in range(elements):
                 entry_start = file_handle.tell()
                 entry = StructProperty.read_data(file_handle, name_table, False, read_size=entry_size)
+                entry = cls._convert_md5_digest(entry)
                 # If we didn't consume the full entry, read the remaining as value struct
                 consumed = file_handle.tell() - entry_start
                 remaining = entry_size - consumed if entry_size > 0 else 0
                 if remaining > 8:  # enough for at least one property header
                     value = StructProperty.read_data(file_handle, name_table, False, read_size=remaining)
+                    value = cls._convert_md5_digest(value)
                     result.append({"key": entry, "value": value})
                 else:
                     if remaining > 0:
@@ -302,6 +327,25 @@ class FGuid(StructProperty):
         return str(Struct.read_buffer(file_handle, GUID))
 
 
+class FMD5Hash(StructProperty):
+    """
+    MD5 hash struct — 16-byte digest stored as a C-style ``digest[16]`` byte
+    array. The parent StructProperty reader parses it into
+    ``{"digest": [b0, b1, ..., b15]}``. We convert that to a 32-char lowercase
+    hex string (e.g. ``"7cbc713d215e61cab80879558e8d8781"``) so it matches the
+    format used by ``ITEMDEFINITIONSAUX.mAsset``, ``CAPPRESETS.mItemHashes``,
+    and the hex-hash convention throughout the IJ2 data pipeline.
+    """
+    @classmethod
+    def read_data(cls, file_handle, *args, **kwargs):
+        result = super().read_data(file_handle, *args, **kwargs)
+        if isinstance(result, dict) and "digest" in result:
+            digest = result["digest"]
+            if isinstance(digest, list) and len(digest) == 16:
+                return "".join(f"{b & 0xFF:02x}" for b in digest)
+        return result
+
+
 class FVector2D(StructProperty):
     @classmethod
     def read_data(cls, file_handle, *args, **kwargs):
@@ -338,6 +382,29 @@ class ArrayProperty(UProperty):
         "WorstCaseItems",
         "Meshes",
     }
+    BYTE_ARRAY_KEYS = {
+        "bytes",
+    }
+    # Arrays with known fixed-size elements where inner struct parsing fails.
+    # Maps key_name → (element_size, field_extractors)
+    # field_extractors: list of (offset, name, ctype) to extract named fields from each element.
+    # Remaining bytes are skipped (unknown padding/fields).
+    FIXED_STRUCT_ARRAY_KEYS = {
+        # Slots: 36-byte elements, object reference (export index) at offset 24
+        "Slots": (36, [(24, "CAPItemPresetAsset", c_uint32)]),
+    }
+
+    @classmethod
+    def _read_fixed_struct_element(cls, file_handle, elem_size, field_extractors):
+        """Read a fixed-size struct element, extracting known fields by offset."""
+        start = file_handle.tell()
+        raw = file_handle.read(elem_size)
+        entry = {}
+        for offset, field_name, ctype in field_extractors:
+            size = ctypes.sizeof(ctype)
+            value = int.from_bytes(raw[offset:offset + size], byteorder="little", signed=False)
+            entry[field_name] = value
+        return entry
 
     @classmethod
     def read_data(cls, file_handle, name_table, headers: bool = True, key_name: str = "", read_size: int = -1, *args, **kwargs):
@@ -347,6 +414,12 @@ class ArrayProperty(UProperty):
         # Calculate per-element size for struct arrays
         data_bytes = read_size - 4 if read_size > 0 else -1  # subtract count field
         elem_size = data_bytes // elements_count if elements_count > 0 and data_bytes > 0 else -1
+        # Check if elements are fixed-size (total divides evenly)
+        is_fixed_size = (
+            elements_count > 0
+            and data_bytes > 0
+            and data_bytes % elements_count == 0
+        )
 
         if key_name in cls.STRING_ARRAY_KEYS:
             subtype = StrProperty
@@ -357,14 +430,37 @@ class ArrayProperty(UProperty):
         elif key_name in cls.INT_ARRAY_KEYS:
             subtype = DWordProperty
             sub_args = (c_uint32,)
-        else:
-            if key_name not in warned_classes and key_name not in [
-                "mItems", "mAssetGroups", "ReferencedObjects",
-            ]:
+        elif key_name in cls.BYTE_ARRAY_KEYS:
+            subtype = ByteProperty
+            sub_args = (c_uint8 * elements_count,)
+            value = subtype.read_data(file_handle, *sub_args)
+            return base64.b64encode(value).decode("ascii")
+        elif key_name in cls.FIXED_STRUCT_ARRAY_KEYS:
+            fixed_elem_size, field_extractors = cls.FIXED_STRUCT_ARRAY_KEYS[key_name]
+            # Validate element size if we can compute it
+            if elem_size > 0 and elem_size != fixed_elem_size:
                 logging.getLogger("IJ2Database").warning(
-                    f"Array type {key_name} is not officially supported for IJ2! Proceed with caution!"
+                    f"Array '{key_name}': expected {fixed_elem_size}-byte elements but computed {elem_size}. Using computed size."
                 )
-                warned_classes.add(key_name)
+                fixed_elem_size = elem_size
+            for i in range(elements_count):
+                entry = cls._read_fixed_struct_element(file_handle, fixed_elem_size, field_extractors)
+                data.append(entry)
+            return data
+        else:
+            # Unknown struct-array types: parse each element as a None-terminated
+            # UE3 property struct. IJ2's struct-array elements always end with a
+            # "None" FName terminator, so StructProperty.read_data() can find the
+            # right boundary on its own — no need to know the per-element size.
+            #
+            # This works for both "fixed-size" arrays (where every element happens
+            # to be the same byte count) and variable-size arrays (e.g. elements
+            # containing strings or inner arrays). Don't try to detect "fixed size"
+            # from `data_bytes % count == 0` — that's often a coincidence, and the
+            # fixed-size hex fallback splits variable elements at the wrong offsets.
+            #
+            # If this ever cascade-fails on a truly unknown property type, the
+            # surrounding handler will catch the exception and log the export.
             subtype = StructProperty
             sub_args = (name_table, False)  # headers=False
 
@@ -394,6 +490,7 @@ PropertyMap: Dict[str, Type[UProperty]] = {
 
 StructPropertyMap: Dict[str, Type[StructProperty]] = {
     "FGuid": FGuid,
+    "FMD5HashData": FMD5Hash,  # game uses "FMD5HashData" as the struct_type name
     "FVector2D": FVector2D,
     "FLinearColor": FLinearColor,
 }
